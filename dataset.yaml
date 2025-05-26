@@ -1,0 +1,6 @@
+train: /home/felipe/Desktop/Vocales/dataset/train
+val: /home/felipe/Desktop/Vocales/dataset/val
+test:
+
+nc: 5
+names: [Letra_A, Letra_O, Letra_I, Letra_U, Letra_E]
