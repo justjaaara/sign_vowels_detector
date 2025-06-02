@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import time
 import threading
+import serial
 
 # importar clase seguimiento Mano
 import SeguimientoManos as sm
@@ -12,6 +13,18 @@ PROCESS_EVERY_N_FRAMES = 10  # Procesar con YOLO cada N frames
 DETECTION_BUFFER_SIZE = 5    # Tamaño del buffer para suavizar detecciones
 RESIZE_FACTOR = 0.3          # Factor para reducir el tamaño del frame
 MODEL_CONFIDENCE = 0.5       # Umbral de confianza para el modelo
+
+# Configuración serial - Simplificada como solicitaste
+puerto = '/dev/ttyUSB0'
+baudrate = 115200
+
+# Inicializar conexión serial
+try:
+    ser = serial.Serial(puerto, baudrate, timeout=1)
+    print(f"Conectado al ESP32 en {puerto}")
+except serial.SerialException as e:
+    print(f"Error al abrir el puerto: {e}")
+    ser = None
 
 # Variables globales para procesamiento en segundo plano
 last_result = None
@@ -143,12 +156,30 @@ while True:
                                 cls_name = r.names[cls_id]
                                 conf = box.conf[0].item()
                                 
-                                # Solo mostrar la clase detectada (sin envío a ESP32)
+                                # Solo mostrar la clase detectada
                                 print(f"Letra detectada: {cls_name}, Confianza: {conf:.2f}")
                                 
                                 # Mostrar la clase y confianza en el frame
                                 cv2.putText(frame, f"{cls_name}: {conf:.2f}", (xmin, ymin-10), 
                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                                
+                                # Enviar al ESP32 si es una vocal (A, E, I, O, U) - Método simplificado
+                                if ser and cls_name in ['Letra_A', 'Letra_E', 'Letra_I', 'Letra_O', 'Letra_U']:
+                                    # Enviar solo si es una nueva detección (para evitar repeticiones)
+                                    if len(last_detections) == 0 or cls_name != last_detections[-1]:
+                                        try:
+                                            # Enviamos el comando con formato "Letra_X"
+                                            mensaje = f"{cls_name}\n"
+                                            ser.write(mensaje.encode('utf-8'))
+                                            print(f"Mensaje enviado: {cls_name}")
+
+                                            # Registrar la detección para evitar envíos repetidos
+                                            last_detections.append(cls_name)
+                                            if len(last_detections) > DETECTION_BUFFER_SIZE:
+                                                last_detections.pop(0)
+                                                
+                                        except Exception as e:
+                                            print(f"Error al enviar al ESP32: {e}")
     
     except Exception as e:
         print(f"Error durante el procesamiento: {e}")
@@ -164,3 +195,11 @@ while True:
 # Cerrar recursos
 cap.release()
 cv2.destroyAllWindows()
+
+# Cerrar conexión serial
+if ser:
+    try:
+        ser.close()
+        print("Conexión serial cerrada")
+    except Exception as e:
+        print(f"Error al cerrar la conexión serial: {e}")
