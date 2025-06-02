@@ -30,9 +30,19 @@ audio_out = I2S(
 # Ruta a los archivos de audio
 AUDIO_PATH = "vocales_audio"
 
+# Variable global para controlar si se está reproduciendo audio
+reproduciendo_audio = False
+
+# Variable global para controlar si se está reproduciendo audio
+reproduciendo_audio = False
+
 # Función para reproducir un archivo WAV
 def play_wav(file_path):
+    global reproduciendo_audio
     try:
+        # Marcar que estamos reproduciendo audio
+        reproduciendo_audio = True
+        
         # Abrir el archivo WAV
         with open(file_path, "rb") as wav_file:
             # Saltar el encabezado WAV (primeros 44 bytes típicamente)
@@ -65,8 +75,16 @@ def play_wav(file_path):
         # Asegurarse de que todo el audio se ha reproducido
         audio_out.wait_tx_done()
         print(f"Audio {file_path} reproducido correctamente")
+        
+        # Enviar confirmación al PC
+        print("AUDIO_TERMINADO")
+        
+        # Marcar que ya no estamos reproduciendo audio
+        reproduciendo_audio = False
     except Exception as e:
         print(f"Error al reproducir audio {file_path}: {e}")
+        # En caso de error, también marcamos que no estamos reproduciendo
+        reproduciendo_audio = False
 
 print("ESP32 listo para recibir datos desde el PC.")
 
@@ -75,24 +93,29 @@ while True:
         mensaje = sys.stdin.readline().strip()
         print("Recibido desde el PC:", mensaje)
         
-        # Procesar el mensaje para identificar la vocal
-        if mensaje == "salir":
-            print("Deteniendo recepción.")
-            break
-        elif mensaje == "Letra_A" or mensaje == "A":
-            audio_file = f"{AUDIO_PATH}/a.wav"
-            play_wav(audio_file)
-        elif mensaje == "Letra_E" or mensaje == "E":
-            audio_file = f"{AUDIO_PATH}/e.wav"
-            play_wav(audio_file)
-        elif mensaje == "Letra_I" or mensaje == "I":
-            audio_file = f"{AUDIO_PATH}/i.wav"
-            play_wav(audio_file)
-        elif mensaje == "Letra_O" or mensaje == "O":
-            audio_file = f"{AUDIO_PATH}/o.wav"
-            play_wav(audio_file)
-        elif mensaje == "Letra_U" or mensaje == "U":
-            audio_file = f"{AUDIO_PATH}/u.wav"
-            play_wav(audio_file)
+        # Solo procesar el mensaje si no estamos reproduciendo audio
+        if not reproduciendo_audio:
+            # Procesar el mensaje para identificar la vocal
+            if mensaje == "salir":
+                print("Deteniendo recepción.")
+                break
+            elif mensaje == "Letra_A" or mensaje == "A":
+                audio_file = f"{AUDIO_PATH}/a.wav"
+                play_wav(audio_file)
+            elif mensaje == "Letra_E" or mensaje == "E":
+                audio_file = f"{AUDIO_PATH}/e.wav"
+                play_wav(audio_file)
+            elif mensaje == "Letra_I" or mensaje == "I":
+                audio_file = f"{AUDIO_PATH}/i.wav"
+                play_wav(audio_file)
+            elif mensaje == "Letra_O" or mensaje == "O":
+                audio_file = f"{AUDIO_PATH}/o.wav"
+                play_wav(audio_file)
+            elif mensaje == "Letra_U" or mensaje == "U":
+                audio_file = f"{AUDIO_PATH}/u.wav"
+                play_wav(audio_file)
+        else:
+            # Informar que se está reproduciendo audio
+            print("Reproduciendo audio, mensaje ignorado")
             
     time.sleep(0.1)
