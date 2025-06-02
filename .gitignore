@@ -13,3 +13,4 @@ desktop.ini
 *.log
 temp/
 logs/
+venv_cpu
