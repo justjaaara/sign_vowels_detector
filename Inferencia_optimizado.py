@@ -3,6 +3,39 @@ import os
 import numpy as np
 import time
 import threading
+import serial
+
+# Variables globales para seguimiento de vocales
+last_sent_vowel = None
+last_sent_time = 0
+VOWEL_SEND_DELAY = 1.0  # Tiempo mínimo entre envíos de la misma vocal (segundos)
+waiting_for_esp32 = False  # Indica si estamos esperando respuesta del ESP32
+
+# Configurar el puerto serial (ajusta el puerto y la velocidad según tu configuración)
+try:
+    esp32 = serial.Serial('/dev/ttyUSB0', 115200, timeout=1)
+    esp32.flush()  # Limpiar el buffer
+    print("Puerto serial conectado correctamente")
+    # Enviar un mensaje inicial al ESP32
+    mensaje_inicial = "HOLA\n"
+    esp32.write(mensaje_inicial.encode())
+    print(f"Mensaje inicial enviado: {mensaje_inicial}")
+    
+    # Esperar a que el ESP32 esté listo
+    waiting_for_esp32 = True
+    print("Esperando a que el ESP32 esté listo...")
+    while waiting_for_esp32:
+        if esp32.in_waiting > 0:
+            respuesta = esp32.readline().decode('utf-8').strip()
+            print(respuesta)
+            print(f"Respuesta del ESP32: {respuesta}")
+            if respuesta == "LISTO":
+                waiting_for_esp32 = False
+                print("ESP32 listo para recibir comandos")
+        time.sleep(0.1)
+except Exception as e:
+    print(f"Error al conectar al puerto serial: {e}")
+    exit()
 
 # importar clase seguimiento Mano
 import SeguimientoManos as sm
@@ -19,6 +52,8 @@ last_result = None
 last_anotaciones = None
 processing_lock = threading.Lock()
 is_processing = False
+
+
 
 # Procesar predicción en segundo plano
 def process_hand_async(recorte, model):
@@ -143,6 +178,38 @@ while True:
                                 cls_id = int(box.cls[0].item())
                                 cls_name = r.names[cls_id]
                                 conf = box.conf[0].item()
+                                
+                                # Enviar la vocal detectada al ESP32 solo si ha cambiado o ha pasado suficiente tiempo
+                                # y si no estamos esperando una confirmación del ESP32
+                                current_time = time.time()
+                                if not waiting_for_esp32 and (cls_name != last_sent_vowel or 
+                                    (current_time - last_sent_time) > VOWEL_SEND_DELAY):
+                                    # Convertir el nombre de la clase al formato esperado por el ESP32
+                                    vocal_a_enviar = f"Letra_{cls_name.split('_')[-1]}\n"
+                                    try:
+                                        esp32.write(vocal_a_enviar.encode())
+                                        print(f"Vocal enviada al ESP32: {vocal_a_enviar.strip()}")
+                                        # Actualizar variables globales
+                                        last_sent_vowel = cls_name
+                                        last_sent_time = current_time
+                                        waiting_for_esp32 = True  # Ahora esperamos la respuesta
+                                    except Exception as e:
+                                        print(f"Error al enviar al ESP32: {e}")
+                                
+                                # Verificar si hay respuesta del ESP32
+                                if waiting_for_esp32:
+                                    if esp32.in_waiting > 0:
+                                        try:
+                                            respuesta = esp32.readline().decode('utf-8').strip()
+                                            print(f"Respuesta del ESP32: '{respuesta}'")
+                                            if "LISTO" in respuesta:
+                                                waiting_for_esp32 = False
+                                                print("ESP32 listo para la siguiente vocal")
+                                        except Exception as e:
+                                            print(f"Error al leer respuesta del ESP32: {e}")
+                                            # Si hay error, reiniciamos para evitar bloqueo
+                                            waiting_for_esp32 = False
+                                
                                 cv2.putText(frame, f"{cls_name}: {conf:.2f}", (xmin, ymin-10), 
                                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
@@ -157,5 +224,9 @@ while True:
     if t == 27:  # Tecla ESC
         break
 
+# Cerrar recursos
 cap.release()
 cv2.destroyAllWindows()
+if 'esp32' in locals():
+    esp32.close()
+    print("Puerto serial cerrado")
